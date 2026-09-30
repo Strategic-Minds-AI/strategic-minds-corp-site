@@ -1,0 +1,97 @@
+name: Benchmark coding cycle
+on:
+  workflow_dispatch:
+    inputs:
+      criterion_id:
+        description: Benchmark criterion for a bounded review-only change
+        default: agents.context
+        required: true
+        type: string
+  schedule:
+    - cron: '*/5 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: benchmark-coding-cycle
+  cancel-in-progress: false
+jobs:
+  propose:
+    if: vars.BENCHMARK_AUTOMATION_ENABLED == 'true' && vars.BENCHMARK_ZERO_COST_BUDGET_ID != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      source_sha: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.18.0'
+      - name: Stop on expired approval, existing review or daily cap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ZERO_COST_EXPIRES_AT: ${{ vars.BENCHMARK_ZERO_COST_EXPIRES_AT }}
+        run: |
+          node --input-type=module <<'JS'
+          if (Date.now() >= Date.parse(process.env.ZERO_COST_EXPIRES_AT) || !Number.isFinite(Date.parse(process.env.ZERO_COST_EXPIRES_AT))) throw new Error('Zero-cost verification expired. Refresh it through the admin benchmark panel.');
+          const repo = process.env.GITHUB_REPOSITORY;
+          const headers = { Authorization: 'Bearer ' + process.env.GH_TOKEN, Accept: 'application/vnd.github+json' };
+          const pulls = await fetch('https://api.github.com/repos/' + repo + '/pulls?state=open&per_page=100', { headers });
+          if (!pulls.ok) throw new Error('Cannot verify pending reviews.');
+          if ((await pulls.json()).some(item => item.head.ref.startsWith('benchmark/candidate-'))) throw new Error('A coding candidate is awaiting review. No second mutation is permitted.');
+          const day = new Date().toISOString().slice(0, 10);
+          const runs = await fetch('https://api.github.com/repos/' + repo + '/actions/workflows/benchmark-coding.yml/runs?created=' + encodeURIComponent(day + '..' + day) + '&per_page=100', { headers });
+          if (!runs.ok || (await runs.json()).total_count > 6) throw new Error('Daily six-cycle ceiling reached or history unavailable. Pause and refresh tomorrow.');
+          JS
+      - id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Install pinned local CPU inference; no paid model service
+        run: |
+          curl --fail --location --retry 2 https://github.com/ollama/ollama/releases/download/v0.35.0/ollama-linux-amd64.tar.zst -o /tmp/ollama.tar.zst
+          echo '1c114a6b220c5efca2ef2b1e5f01d1e535e26f6cd6d1678c8489325d2835e525  /tmp/ollama.tar.zst' | sha256sum --check --strict
+          mkdir -p /tmp/ollama
+          tar --zstd -xf /tmp/ollama.tar.zst -C /tmp/ollama
+          CUDA_VISIBLE_DEVICES='' OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NUM_PARALLEL=1 /tmp/ollama/bin/ollama serve > /tmp/ollama.log 2>&1 &
+          for attempt in $(seq 1 60); do curl --fail --silent http://127.0.0.1:11434/api/version && break; sleep 1; done
+          OLLAMA_HOST=127.0.0.1:11434 /tmp/ollama/bin/ollama pull qwen2.5-coder:1.5b
+      - name: Propose one bounded source change
+        env:
+          CRITERION_ID: ${{ inputs.criterion_id || vars.BENCHMARK_NEXT_CRITERION || 'agents.context' }}
+        run: node automation/worker.mjs --run
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coding-candidate
+          path: |
+            automation-proposal.json
+            src/components
+            src/pages
+            base44/shared
+            base44/functions
+          retention-days: 1
+          if-no-files-found: error
+  publish-review:
+    needs: propose
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.propose.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.18.0'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: coding-candidate
+          path: candidate
+      - name: Publish draft only and dispatch separate validator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node automation/publish.mjs
