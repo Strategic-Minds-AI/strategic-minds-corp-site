@@ -4,7 +4,15 @@ const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.met
 let report;
 try { report = JSON.parse(await readFile('benchmark-ci-report.json', 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; report = { kind: 'INDEPENDENT_OFFLINE_CI_ONLY', candidate_sha: process.env.CANDIDATE_SHA, baseline_sha: process.env.BASELINE_SHA, catalog_revision: manifest.catalog_revision, observed_at: new Date().toISOString(), run_id: process.env.GITHUB_RUN_ID, checks: [], total_checks: 236, not_tested: 236, results: manifest.criteria.map(item => ({ criterion_id: item.id, tests: item.tests.map(test => ({ ...test, status: 'NOT_TESTED', evidence: 'Independent assertion execution did not produce evidence.' })) })) }; }
 const outcomes = { sandbox_isolation: process.env.ISOLATION_RESULT, immutable_revision_identity: process.env.IDENTITY_RESULT, offline_assertions: process.env.ASSERTIONS_RESULT, frozen_dependency_install: process.env.DEPENDENCIES_RESULT, frontend_compile: process.env.COMPILE_RESULT };
-report.ci_passed = Object.values(outcomes).every(value => value === 'success');
+if (process.env.AUTOMATED_DRAFT === 'true') {
+  outcomes.draft_artifact = process.env.ARTIFACT_RESULT;
+  outcomes.draft_materialization = process.env.MATERIALIZE_RESULT;
+  report.automated_draft_checks = true;
+  report.proposal_sha256 = process.env.PROPOSAL_SHA256 || null;
+  report.source_published = false;
+}
+report.ci_passed = Object.values(outcomes).every(value => value === 'success') && (report.checks || []).length > 0 && report.checks.every(item => item.passed === true);
+report.qualification = report.ci_passed ? 'OFFLINE_CHECKS_PASSED_NOT_RELEASE_APPROVED' : 'BLOCKED';
 report.pipeline_outcomes = outcomes;
 report.feature_parity = 0; report.check_coverage = 0; report.release_approved = false;
 const text = JSON.stringify(report, null, 2);

@@ -1,7 +1,7 @@
 name: Independent benchmark CI
 on:
   push:
-    branches: ['benchmark/install-coding-system-v1']
+    branches: ['benchmark/install-coding-system-v1', 'benchmark/install-automated-checks-v2']
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -61,7 +61,9 @@ jobs:
           node trusted/automation/sandbox.mjs --isolation-check
       - name: Execute host-owned assertions against isolated candidate probes
         id: assertions
-        run: node --experimental-strip-types --loader ./trusted/automation/runtime-loader.mjs trusted/automation/validator.mjs
+        run: |
+          node trusted/automation/materialize-draft.mjs --self-check
+          node --experimental-strip-types --loader ./trusted/automation/runtime-loader.mjs trusted/automation/validator.mjs
       - name: Compile candidate frontend without network or host write access
         id: compile
         run: node trusted/automation/sandbox.mjs --compile
