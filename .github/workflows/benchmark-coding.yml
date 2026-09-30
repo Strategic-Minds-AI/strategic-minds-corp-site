@@ -8,7 +8,7 @@ on:
         required: true
         type: string
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 */4 * * *'
 permissions:
   contents: read
   actions: read
@@ -21,6 +21,11 @@ jobs:
     if: vars.BENCHMARK_AUTOMATION_ENABLED == 'true' && vars.BENCHMARK_ZERO_COST_BUDGET_ID != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
     outputs:
       source_sha: ${{ steps.base.outputs.sha }}
     steps:
@@ -31,10 +36,34 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22.18.0'
-      - name: Stop on expired approval, existing review or daily cap
+      - name: Verify fresh zero-cost protection with signed workload identity
+        id: cost
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync } from 'node:fs';
+          const endpoint = 'https://strategic-ai-consulting.base44.app/functions/benchmarkCostRenewal';
+          for (const body of [{}, { token: 'forged' }, { token: 'forged', approved: true }]) {
+            const rejected = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+            if (rejected.status !== 403) throw new Error('Cost endpoint did not reject an unsigned grant.');
+          }
+          const identityUrl = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+          if (identityUrl.protocol !== 'https:' || !identityUrl.hostname.endsWith('.actions.githubusercontent.com')) throw new Error('Untrusted identity issuer URL.');
+          identityUrl.searchParams.set('audience', endpoint);
+          const identity = await fetch(identityUrl, { headers: { Authorization: 'Bearer ' + process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }, signal: AbortSignal.timeout(30000) });
+          if (!identity.ok) throw new Error('Signed workload identity unavailable.');
+          const { value: token } = await identity.json();
+          if (typeof token !== 'string' || !token) throw new Error('Empty workload identity.');
+          console.log('::add-mask::' + token);
+          const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }), signal: AbortSignal.timeout(60000) });
+          if (!response.ok) throw new Error('Fresh cost verification rejected: ' + response.status);
+          const result = await response.json();
+          if (result.verified !== true || result.paid_execution_allowed !== false || result.run_id !== process.env.GITHUB_RUN_ID || !/^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/.test(result.expires_at) || Date.parse(result.expires_at) <= Date.now()) throw new Error('Invalid cost-verification receipt.');
+          appendFileSync(process.env.GITHUB_OUTPUT, 'expires_at=' + result.expires_at + '\n');
+          JS
+      - name: Stop on expired verification, existing review or daily cap
         env:
           GH_TOKEN: ${{ github.token }}
-          ZERO_COST_EXPIRES_AT: ${{ vars.BENCHMARK_ZERO_COST_EXPIRES_AT }}
+          ZERO_COST_EXPIRES_AT: ${{ steps.cost.outputs.expires_at }}
         run: |
           node --input-type=module <<'JS'
           if (Date.now() >= Date.parse(process.env.ZERO_COST_EXPIRES_AT) || !Number.isFinite(Date.parse(process.env.ZERO_COST_EXPIRES_AT))) throw new Error('Zero-cost verification expired. Refresh it through the admin benchmark panel.');
