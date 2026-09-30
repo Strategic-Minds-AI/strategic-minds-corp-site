@@ -1,7 +1,7 @@
 name: Independent benchmark CI
 on:
   push:
-    branches: ['benchmark/install-coding-system-v1', 'benchmark/install-automated-checks-v2']
+    branches: ['benchmark/install-coding-system-v1', 'benchmark/install-automated-checks-v2', 'benchmark/install-cost-renewal-v3']
   workflow_dispatch:
     inputs:
       candidate_sha:

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "catalog_revision": "2026-09-29.1:eba09c25c2d94954b6baada57e0102a8ec0c4a820f97689bd96a3fa5adfc522d",
-  "source_sha": "b2e7d081bbb2ba51094327106071ad2e55e4b3c7",
+  "source_sha": "a43d5df66c37dd254d31fb7ffd61e5195caf6e1c",
   "criteria": [
     {
       "id": "intelligence.discovery",
@@ -1662,6 +1662,8 @@
     "max_changes_per_cycle": 3,
     "max_cycles_per_day": 6,
     "automatic_draft_checks": true,
+    "automatic_cost_renewal": true,
+    "scheduled_interval_hours": 4,
     "automatic_merge": false,
     "automatic_deployment": false,
     "automatic_publication": false,
