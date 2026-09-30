@@ -1,4 +1,6 @@
-# Review-only benchmark coding system
+# Unattended draft generation and independent checks
+
+A separate read-only job automatically checks every generated private draft against its exact trusted baseline, verifies artifact digests and scope, runs negative controls and host-owned assertions, then compiles it in the isolated container. Draft artifacts do not block later bounded cycles. Reports explicitly deny production release approval and award no deployed-runtime parity. No per-draft approval is required for these checks; publication, merging and deployment remain separately gated until trusted staging tests and rollback exist.
 
 Local CPU inference using Ollama v0.35.0 with a verified release checksum and qwen2.5-coder:1.5b with a pinned manifest digest; no paid AI endpoint. A pinned software version and seeded, zero-temperature inference reduce variability but do not guarantee deterministic or correct model output.
 
