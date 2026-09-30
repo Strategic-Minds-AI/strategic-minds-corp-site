@@ -19,6 +19,5 @@ for (const change of proposal.changes) { if (!allowed(change.path)) throw new Er
 const tree = await request('/git/trees', 'POST', { base_tree: base.tree.sha, tree: entries });
 const commit = await request('/git/commits', 'POST', { message: 'benchmark: bounded candidate for ' + proposal.criterion_id, tree: tree.sha, parents: [proposal.source_sha] });
 await request('/git/refs', 'POST', { ref: 'refs/heads/' + branch, sha: commit.sha });
-const pull = await request('/pulls', 'POST', { title: 'Benchmark candidate: ' + proposal.criterion_id, head: branch, base: 'main', draft: true, body: 'Untrusted local-model proposal. No merge, deployment, outbound action or benchmark pass is approved.\n\n' + proposal.summary + '\n\nSource revision: ' + proposal.source_sha + '\nRollback: close this draft and delete its branch; production is unchanged.\nIndependent CI must evaluate this exact candidate. Full runtime evidence remains pending.' });
 await request('/actions/workflows/benchmark-validator.yml/dispatches', 'POST', { ref: 'main', inputs: { candidate_sha: commit.sha, baseline_sha: proposal.source_sha } });
-console.log(JSON.stringify({ candidate_sha: commit.sha, pull_request: pull.html_url, parity_awarded: 0 }));
+console.log(JSON.stringify({ candidate_sha: commit.sha, review_url: 'https://github.com/' + repository + '/compare/main...' + branch, criterion_id: proposal.criterion_id, source_sha: proposal.source_sha, parity_awarded: 0 }));
