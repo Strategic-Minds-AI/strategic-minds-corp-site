@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "catalog_revision": "2026-09-29.1:eba09c25c2d94954b6baada57e0102a8ec0c4a820f97689bd96a3fa5adfc522d",
-  "source_sha": "a43d5df66c37dd254d31fb7ffd61e5195caf6e1c",
+  "source_sha": "8a658cd72b0d05b0546a311d676541bf01cc7cbc",
   "criteria": [
     {
       "id": "intelligence.discovery",
@@ -1663,6 +1663,9 @@
     "max_cycles_per_day": 6,
     "automatic_draft_checks": true,
     "automatic_cost_renewal": true,
+    "offline_source_rollback_rehearsal": true,
+    "deployed_staging_verified": false,
+    "provider_rollback_verified": false,
     "scheduled_interval_hours": 4,
     "automatic_merge": false,
     "automatic_deployment": false,
