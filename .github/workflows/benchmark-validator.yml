@@ -49,14 +49,14 @@ jobs:
           if [ "$BASELINE_SHA" != "$CANDIDATE_SHA" ]; then
             git -C candidate diff --exit-code "$BASELINE_SHA" "$CANDIDATE_SHA" -- automation .github base44/shared/benchmarkCriteria.ts base44/shared/benchmarkPolicy.ts base44/shared/benchmarkProof.ts base44/shared/benchmarkSelfChecks.ts
           fi
-      - name: Execute trusted offline regression assertions
-        id: assertions
-        run: node --experimental-strip-types --loader ./trusted/automation/runtime-loader.mjs trusted/automation/validator.mjs
       - name: Install frozen frontend dependencies without lifecycle scripts
         id: dependencies
         if: always()
         working-directory: candidate
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Execute trusted backend and regression assertions
+        id: assertions
+        run: node --experimental-strip-types --loader ./trusted/automation/runtime-loader.mjs trusted/automation/validator.mjs
       - name: Compile candidate frontend
         id: compile
         if: always()

@@ -6,6 +6,6 @@ The five-minute GitHub schedule is best-effort, with one change under review, si
 
 Enable only from the authenticated admin benchmark panel after this installation is reviewed and merged. Protected benchmark, auth, security, credential and automation files are outside the coding worker write scope. No automatic merge, deployment, notification, provider mutation or permissions change. Failed, incomplete or oversized model output is rejected.
 
-Separate CI uses the immutable ancestor validator, verifies exact commit identities, runs offline regression assertions and compiles the frontend without production secrets. Its report deliberately awards zero full benchmark parity: it does not certify deployed runtime behavior. Artifact retention is one day; keep raw independent evidence elsewhere before claiming release validation.
+Separate CI uses the immutable ancestor validator, verifies exact commit identities, parses backend modules, resolves relative backend imports, runs offline regression assertions and compiles the frontend without production secrets. Its report deliberately awards zero full benchmark parity: it does not certify deployed runtime behavior. Artifact retention is one day; keep raw independent evidence elsewhere before claiming release validation.
 
 Rollback: pause through the admin panel, close candidate drafts, and revert the installation commit after review. Production changes require explicit separate merge/deployment approval.

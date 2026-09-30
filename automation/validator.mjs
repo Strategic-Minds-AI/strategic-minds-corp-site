@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, readdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -8,6 +9,22 @@ const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.met
 const checks = [];
 async function check(name, operation) { try { const actual = await operation(); checks.push({ name, passed: true, expected: 'Assertion completes without error', actual: actual ?? 'Assertions passed' }); } catch (error) { checks.push({ name, passed: false, expected: 'Assertion completes without error', actual: String(error.message).slice(0, 1500) }); } }
 const load = file => import(pathToFileURL(path.join(root, file)).href);
+await check('Backend modules parse and relative imports resolve', async () => {
+  const ts = createRequire(path.join(root, 'package.json'))('typescript');
+  async function walk(directory) { const files = []; for (const entry of await readdir(directory, { withFileTypes: true })) { const file = path.join(directory, entry.name); if (entry.isDirectory()) files.push(...await walk(file)); else if (entry.isFile() && file.endsWith('.ts')) files.push(file); } return files; }
+  const files = await walk(path.join(root, 'base44')); const failures = [];
+  for (const file of files) {
+    const text = await readFile(file, 'utf8');
+    const result = ts.transpileModule(text, { fileName: file, reportDiagnostics: true, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } });
+    for (const diagnostic of result.diagnostics || []) if (diagnostic.category === ts.DiagnosticCategory.Error) failures.push(path.relative(root, file) + ': ' + ts.flattenDiagnosticMessageText(diagnostic.messageText, ' '));
+    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    for (const statement of source.statements) if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.startsWith('.')) {
+      const target = path.resolve(path.dirname(file), statement.moduleSpecifier.text); assert.ok(target.startsWith(root + path.sep), 'Import escapes repository');
+      try { await readFile(target); } catch { failures.push(path.relative(root, file) + ': unresolved relative import ' + statement.moduleSpecifier.text); }
+    }
+  }
+  assert.deepEqual(failures, []); return { modules_parsed: files.length, runtime_execution_certified: false };
+});
 await check('Complete catalog and denominator retained', async () => { const { criteria } = await load('base44/shared/benchmarkCriteria.ts'); assert.deepEqual(criteria.map(item => ({ id: item.id, tests: item.tests })), manifest.criteria.map(item => ({ id: item.id, tests: item.tests }))); assert.equal(criteria.length, 59); assert.equal(criteria.flatMap(item => item.tests).length, 236); });
 await check('Message validation rejects unknown properties and oversized content', async () => { const { chatMessage, chatKey, pageOffset } = await load('base44/shared/adminChatValidation.ts'); assert.throws(() => chatMessage({ role: 'user', content: 'hello', owner_id: 'other' }, 'user')); assert.throws(() => chatMessage({ role: 'user', content: 'x'.repeat(60001) }, 'user')); assert.throws(() => chatKey('../other')); assert.throws(() => pageOffset(-1)); assert.throws(() => pageOffset(1.5)); assert.equal(pageOffset(0), 0); });
 await check('Schema normalization preserves canonical message identity', async () => { const { chatMessage } = await load('base44/shared/adminChatValidation.ts'); assert.deepEqual(chatMessage({ role: 'user', content: 'hello', attachments: null }, 'user'), chatMessage({ role: 'user', content: 'hello' }, 'user')); assert.throws(() => chatMessage({ role: 'assistant', content: 'hello', savedUrl: 'http://unsafe.test' }, 'assistant')); });
