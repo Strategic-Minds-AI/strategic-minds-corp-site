@@ -1,0 +1,83 @@
+name: Independent benchmark CI
+on:
+  push:
+    branches: ['benchmark/install-coding-system-v1']
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact candidate commit to validate
+        type: string
+        required: true
+      baseline_sha:
+        description: Trusted ancestor containing the validator
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: benchmark-ci-${{ inputs.candidate_sha || github.sha }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
+      BASELINE_SHA: ${{ inputs.baseline_sha || github.sha }}
+      CANDIDATE_DIRECTORY: candidate
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.BASELINE_SHA }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.18.0'
+      - name: Verify immutable revisions and trusted ancestor
+        id: identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          node trusted/automation/review-policy.mjs --verify-diff
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            test "$GITHUB_REF" = 'refs/heads/main'
+            git -C candidate merge-base --is-ancestor "$BASELINE_SHA" origin/main
+          fi
+      - name: Install trusted frozen dependencies without lifecycle scripts
+        id: dependencies
+        working-directory: trusted
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare pinned isolated runtime
+        id: isolation
+        run: |
+          docker pull node:22.18.0-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+          node trusted/automation/sandbox.mjs --isolation-check
+      - name: Execute host-owned assertions against isolated candidate probes
+        id: assertions
+        run: node --experimental-strip-types --loader ./trusted/automation/runtime-loader.mjs trusted/automation/validator.mjs
+      - name: Compile candidate frontend without network or host write access
+        id: compile
+        run: node trusted/automation/sandbox.mjs --compile
+      - name: Finalize honest CI report including compilation failures
+        if: always()
+        env:
+          ISOLATION_RESULT: ${{ steps.isolation.outcome }}
+          IDENTITY_RESULT: ${{ steps.identity.outcome }}
+          ASSERTIONS_RESULT: ${{ steps.assertions.outcome }}
+          DEPENDENCIES_RESULT: ${{ steps.dependencies.outcome }}
+          COMPILE_RESULT: ${{ steps.compile.outcome }}
+        run: node trusted/automation/finalize.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: benchmark-offline-ci-${{ github.run_id }}
+          path: benchmark-ci-report.json
+          retention-days: 1
+          if-no-files-found: error

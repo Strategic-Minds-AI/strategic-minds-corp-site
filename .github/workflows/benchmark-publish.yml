@@ -1,0 +1,49 @@
+name: Publish security-reviewed candidate
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful coding run containing the reviewed draft artifact
+        required: true
+        type: string
+      proposal_sha256:
+        description: Exact proposal SHA256 printed by that coding run
+        required: true
+        type: string
+      security_reviewed:
+        description: I reviewed every changed file, including authorization and side effects
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: benchmark-coding-cycle
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && inputs.security_reviewed == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.18.0'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: coding-candidate
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify exact content approval and publish review branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          APPROVED_PROPOSAL_SHA256: ${{ inputs.proposal_sha256 }}
+          SECURITY_REVIEWED: ${{ inputs.security_reviewed }}
+        run: node automation/publish.mjs
