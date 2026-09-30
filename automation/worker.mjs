@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 const sha = value => createHash('sha256').update(value).digest('hex');
-const protectedPath = file => /(^|\/)(automation|\.github|entities|agents|workflows|connectors|api|lib)(\/|$)/.test(file) || /benchmark|vault|Auth|Login|Register|Password|ProtectedRoute|package|lock|\.env/i.test(file);
-export function allowed(file) { return typeof file === 'string' && /^(src\/(components|pages)\/|base44\/(shared|functions)\/)[A-Za-z0-9_./-]+\.(jsx?|tsx?)$/.test(file) && !file.split('/').includes('..') && !protectedPath(file); }
+import { allowed } from './review-policy.mjs';
+export { allowed } from './review-policy.mjs';
 async function filesAt(dir) { const result = []; for (const item of await readdir(dir, { withFileTypes: true })) { const file = dir + '/' + item.name; if (item.isDirectory()) result.push(...await filesAt(file)); else if (item.isFile() && allowed(file)) result.push(file); } return result; }
 async function generate() {
   const manifest = JSON.parse(await readFile('automation/manifest.json', 'utf8'));
@@ -40,6 +40,8 @@ async function generate() {
   if (!staged.length) { await writeFile('automation-proposal.json', JSON.stringify({ status: 'BLOCKED', criterion_id: criterion.id, blockers: proposal.blockers || ['No bounded implementation produced.'], parity_awarded: 0 }, null, 2)); throw new Error('No implementation produced; no success awarded.'); }
   for (const change of staged) { await mkdir(path.dirname(change.path), { recursive: true }); await writeFile(change.path, change.content); }
   const source = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  await writeFile('automation-proposal.json', JSON.stringify({ status: 'PROPOSED_NOT_VALIDATED', criterion_id: criterion.id, source_sha: source, model_digest: localModel.digest, summary: String(proposal.summary || 'Bounded candidate change').slice(0, 1000), changes: staged.map(item => ({ path: item.path, sha256: sha(item.content) })), blockers: proposal.blockers || [], parity_awarded: 0 }, null, 2));
+  const output = JSON.stringify({ status: 'PROPOSED_NOT_VALIDATED', requires_security_review: true, criterion_id: criterion.id, source_sha: source, model_digest: localModel.digest, summary: String(proposal.summary || 'Bounded candidate change').slice(0, 1000), changes: staged.map(item => ({ path: item.path, sha256: sha(item.content) })), blockers: proposal.blockers || [], parity_awarded: 0 }, null, 2);
+  await writeFile('automation-proposal.json', output);
+  console.log(JSON.stringify({ status: 'AWAITING_EXACT_CONTENT_SECURITY_REVIEW', proposal_sha256: sha(output), source_sha: source, publication_started: false }));
 }
 if (process.argv.includes('--run')) await generate();

@@ -1663,6 +1663,9 @@
     "max_cycles_per_day": 6,
     "automatic_merge": false,
     "automatic_deployment": false,
+    "automatic_publication": false,
+    "exact_content_security_review_required": true,
+    "candidate_execution": "read-only-network-disabled-container",
     "self_grading": false,
     "missing_evidence_earns_zero": true
   }
