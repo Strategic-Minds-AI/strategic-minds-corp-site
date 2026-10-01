@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   propose:
-    if: vars.BENCHMARK_AUTOMATION_ENABLED == 'true' && vars.BENCHMARK_ZERO_COST_BUDGET_ID != ''
+    if: false # donor paused by approved ESTATE-24-7-LINE-GATE-20261001 cutover
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
